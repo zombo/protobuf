@@ -44,6 +44,7 @@
 #include <google/protobuf/util/internal/utility.h>
 #include <google/protobuf/stubs/strutil.h>
 
+
 #include <google/protobuf/stubs/map_util.h>
 #include <google/protobuf/stubs/statusor.h>
 
@@ -73,6 +74,7 @@ ProtoStreamObjectWriter::ProtoStreamObjectWriter(
   set_ignore_unknown_fields(options_.ignore_unknown_fields);
   set_ignore_unknown_enum_values(options_.ignore_unknown_enum_values);
   set_use_lower_camel_for_enums(options_.use_lower_camel_for_enums);
+  set_case_insensitive_enum_parsing(options_.case_insensitive_enum_parsing);
 }
 
 ProtoStreamObjectWriter::ProtoStreamObjectWriter(
@@ -85,6 +87,7 @@ ProtoStreamObjectWriter::ProtoStreamObjectWriter(
       options_(options) {
   set_ignore_unknown_fields(options_.ignore_unknown_fields);
   set_use_lower_camel_for_enums(options.use_lower_camel_for_enums);
+  set_case_insensitive_enum_parsing(options_.case_insensitive_enum_parsing);
 }
 
 ProtoStreamObjectWriter::ProtoStreamObjectWriter(
@@ -114,7 +117,7 @@ namespace {
 void SplitSecondsAndNanos(StringPiece input, StringPiece* seconds,
                           StringPiece* nanos) {
   size_t idx = input.rfind('.');
-  if (idx != string::npos) {
+  if (idx != std::string::npos) {
     *seconds = input.substr(0, idx);
     *nanos = input.substr(idx + 1);
   } else {
@@ -325,9 +328,9 @@ void ProtoStreamObjectWriter::AnyWriter::StartAny(const DataPiece& value) {
   // Figure out the type url. This is a copy-paste from WriteString but we also
   // need the value, so we can't just call through to that.
   if (value.type() == DataPiece::TYPE_STRING) {
-    type_url_ = string(value.str());
+    type_url_ = std::string(value.str());
   } else {
-    StatusOr<string> s = value.ToString();
+    StatusOr<std::string> s = value.ToString();
     if (!s.ok()) {
       parent_->InvalidValue("String", s.status().message());
       invalid_ = true;
@@ -453,7 +456,7 @@ ProtoStreamObjectWriter::Item::Item(ProtoStreamObjectWriter* enclosing,
     any_.reset(new AnyWriter(ow_));
   }
   if (item_type == MAP) {
-    map_keys_.reset(new std::unordered_set<string>);
+    map_keys_.reset(new std::unordered_set<std::string>);
   }
 }
 
@@ -470,13 +473,13 @@ ProtoStreamObjectWriter::Item::Item(ProtoStreamObjectWriter::Item* parent,
     any_.reset(new AnyWriter(ow_));
   }
   if (item_type == MAP) {
-    map_keys_.reset(new std::unordered_set<string>);
+    map_keys_.reset(new std::unordered_set<std::string>);
   }
 }
 
 bool ProtoStreamObjectWriter::Item::InsertMapKeyIfNotPresent(
     StringPiece map_key) {
-  return InsertIfNotPresent(map_keys_.get(), string(map_key));
+  return InsertIfNotPresent(map_keys_.get(), std::string(map_key));
 }
 
 ProtoStreamObjectWriter* ProtoStreamObjectWriter::StartObject(
@@ -874,7 +877,7 @@ ProtoStreamObjectWriter* ProtoStreamObjectWriter::EndList() {
 
 Status ProtoStreamObjectWriter::RenderStructValue(ProtoStreamObjectWriter* ow,
                                                   const DataPiece& data) {
-  string struct_field_name;
+  std::string struct_field_name;
   switch (data.type()) {
     // Our JSON parser parses numbers as either int64, uint64, or double.
     case DataPiece::TYPE_INT64: {
@@ -885,7 +888,7 @@ Status ProtoStreamObjectWriter::RenderStructValue(ProtoStreamObjectWriter* ow,
         if (int_value.ok()) {
           ow->ProtoWriter::RenderDataPiece(
               "string_value",
-              DataPiece(SimpleItoa(int_value.ValueOrDie()), true));
+              DataPiece(StrCat(int_value.ValueOrDie()), true));
           return Status();
         }
       }
@@ -900,7 +903,7 @@ Status ProtoStreamObjectWriter::RenderStructValue(ProtoStreamObjectWriter* ow,
         if (int_value.ok()) {
           ow->ProtoWriter::RenderDataPiece(
               "string_value",
-              DataPiece(SimpleItoa(int_value.ValueOrDie()), true));
+              DataPiece(StrCat(int_value.ValueOrDie()), true));
           return Status();
         }
       }
@@ -1167,13 +1170,13 @@ ProtoStreamObjectWriter* ProtoStreamObjectWriter::RenderDataPiece(
 
 // Map of functions that are responsible for rendering well known type
 // represented by the key.
-std::unordered_map<string, ProtoStreamObjectWriter::TypeRenderer>*
+std::unordered_map<std::string, ProtoStreamObjectWriter::TypeRenderer>*
     ProtoStreamObjectWriter::renderers_ = NULL;
 PROTOBUF_NAMESPACE_ID::internal::once_flag writer_renderers_init_;
 
 void ProtoStreamObjectWriter::InitRendererMap() {
-  renderers_ =
-      new std::unordered_map<string, ProtoStreamObjectWriter::TypeRenderer>();
+  renderers_ = new std::unordered_map<std::string,
+                                      ProtoStreamObjectWriter::TypeRenderer>();
   (*renderers_)["type.googleapis.com/google.protobuf.Timestamp"] =
       &ProtoStreamObjectWriter::RenderTimestamp;
   (*renderers_)["type.googleapis.com/google.protobuf.Duration"] =
@@ -1227,7 +1230,7 @@ void ProtoStreamObjectWriter::DeleteRendererMap() {
 }
 
 ProtoStreamObjectWriter::TypeRenderer*
-ProtoStreamObjectWriter::FindTypeRenderer(const string& type_url) {
+ProtoStreamObjectWriter::FindTypeRenderer(const std::string& type_url) {
   PROTOBUF_NAMESPACE_ID::internal::call_once(writer_renderers_init_,
                                              InitRendererMap);
   return FindOrNull(*renderers_, type_url);

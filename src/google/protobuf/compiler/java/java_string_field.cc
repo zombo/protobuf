@@ -47,6 +47,7 @@
 #include <google/protobuf/wire_format.h>
 #include <google/protobuf/stubs/strutil.h>
 
+
 namespace google {
 namespace protobuf {
 namespace compiler {
@@ -58,11 +59,10 @@ using internal::WireFormatLite;
 namespace {
 
 void SetPrimitiveVariables(const FieldDescriptor* descriptor,
-                           int messageBitIndex,
-                           int builderBitIndex,
+                           int messageBitIndex, int builderBitIndex,
                            const FieldGeneratorInfo* info,
                            ClassNameResolver* name_resolver,
-                           std::map<string, string>* variables) {
+                           std::map<std::string, std::string>* variables) {
   SetCommonFieldVariables(descriptor, info, variables);
 
   (*variables)["empty_list"] = "com.google.protobuf.LazyStringArrayList.EMPTY";
@@ -72,8 +72,8 @@ void SetPrimitiveVariables(const FieldDescriptor* descriptor,
       "= " + ImmutableDefaultValue(descriptor, name_resolver);
   (*variables)["capitalized_type"] = "String";
   (*variables)["tag"] =
-      SimpleItoa(static_cast<int32>(WireFormat::MakeTag(descriptor)));
-  (*variables)["tag_size"] = SimpleItoa(
+      StrCat(static_cast<int32>(WireFormat::MakeTag(descriptor)));
+  (*variables)["tag_size"] = StrCat(
       WireFormat::TagSize(descriptor->number(), GetType(descriptor)));
   (*variables)["null_check"] =
       "  if (value == null) {\n"
@@ -153,11 +153,11 @@ ImmutableStringFieldGenerator(const FieldDescriptor* descriptor,
 ImmutableStringFieldGenerator::~ImmutableStringFieldGenerator() {}
 
 int ImmutableStringFieldGenerator::GetNumBitsForMessage() const {
-  return 1;
+  return SupportFieldPresence(descriptor_->file()) ? 1 : 0;
 }
 
 int ImmutableStringFieldGenerator::GetNumBitsForBuilder() const {
-  return 1;
+  return GetNumBitsForMessage();
 }
 
 // A note about how strings are handled. This code used to just store a String
@@ -451,8 +451,8 @@ GenerateSerializedSizeCode(io::Printer* printer) const {
 void ImmutableStringFieldGenerator::
 GenerateEqualsCode(io::Printer* printer) const {
   printer->Print(variables_,
-    "result = result && get$capitalized_name$()\n"
-    "    .equals(other.get$capitalized_name$());\n");
+    "if (!get$capitalized_name$()\n"
+    "    .equals(other.get$capitalized_name$())) return false;\n");
 }
 
 void ImmutableStringFieldGenerator::
@@ -463,7 +463,7 @@ GenerateHashCode(io::Printer* printer) const {
     "hash = (53 * hash) + get$capitalized_name$().hashCode();\n");
 }
 
-string ImmutableStringFieldGenerator::GetBoxedType() const {
+std::string ImmutableStringFieldGenerator::GetBoxedType() const {
   return "java.lang.String";
 }
 
@@ -1016,8 +1016,8 @@ GenerateSerializedSizeCode(io::Printer* printer) const {
 void RepeatedImmutableStringFieldGenerator::
 GenerateEqualsCode(io::Printer* printer) const {
   printer->Print(variables_,
-    "result = result && get$capitalized_name$List()\n"
-    "    .equals(other.get$capitalized_name$List());\n");
+    "if (!get$capitalized_name$List()\n"
+    "    .equals(other.get$capitalized_name$List())) return false;\n");
 }
 
 void RepeatedImmutableStringFieldGenerator::
@@ -1029,7 +1029,7 @@ GenerateHashCode(io::Printer* printer) const {
     "}\n");
 }
 
-string RepeatedImmutableStringFieldGenerator::GetBoxedType() const {
+std::string RepeatedImmutableStringFieldGenerator::GetBoxedType() const {
   return "String";
 }
 

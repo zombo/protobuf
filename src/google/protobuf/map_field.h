@@ -107,6 +107,7 @@ class PROTOBUF_EXPORT MapFieldBase {
   virtual void Swap(MapFieldBase* other) = 0;
   // Sync Map with repeated field and returns the size of map.
   virtual int size() const = 0;
+  virtual void Clear() = 0;
 
   // Returns the number of bytes used by the repeated field, excluding
   // sizeof(*this)
@@ -268,9 +269,8 @@ class MapField : public TypeDefinedMapFieldBase<Key, T> {
     return result;
   }
 
-  // Convenient methods for generated message implementation.
   int size() const override;
-  void Clear();
+  void Clear() override;
   void MergeFrom(const MapFieldBase& other) override;
   void Swap(MapFieldBase* other) override;
 
@@ -286,6 +286,17 @@ class MapField : public TypeDefinedMapFieldBase<Key, T> {
   // take the ownership iff arena_ is NULL.
   EntryType* NewEntryWrapper(const Key& key, const T& t) const {
     return impl_.NewEntryWrapper(key, t);
+  }
+
+  const char* _InternalParse(const char* ptr, ParseContext* ctx) {
+    return impl_._InternalParse(ptr, ctx);
+  }
+  template <typename Metadata>
+  const char* ParseWithEnumValidation(const char* ptr, ParseContext* ctx,
+                                      bool (*is_valid)(int), uint32 field_num,
+                                      Metadata* metadata) {
+    return impl_.ParseWithEnumValidation(ptr, ctx, is_valid, field_num,
+                                         metadata);
   }
 
  private:
@@ -334,6 +345,7 @@ class PROTOBUF_EXPORT DynamicMapField
   Map<MapKey, MapValueRef>* MutableMap() override;
 
   int size() const override;
+  void Clear() override;
 
  private:
   Map<MapKey, MapValueRef> map_;
@@ -742,7 +754,7 @@ class PROTOBUF_EXPORT MapIterator {
  public:
   MapIterator(Message* message, const FieldDescriptor* field) {
     const Reflection* reflection = message->GetReflection();
-    map_ = reflection->MapData(message, field);
+    map_ = reflection->MutableMapData(message, field);
     key_.SetType(field->message_type()->FindFieldByName("key")->cpp_type());
     value_.SetType(field->message_type()->FindFieldByName("value")->cpp_type());
     map_->InitializeIterator(this);
@@ -827,13 +839,13 @@ struct hash<::PROTOBUF_NAMESPACE_ID::MapKey> {
       case ::PROTOBUF_NAMESPACE_ID::FieldDescriptor::CPPTYPE_STRING:
         return hash<std::string>()(map_key.GetStringValue());
       case ::PROTOBUF_NAMESPACE_ID::FieldDescriptor::CPPTYPE_INT64:
-        return hash<::google::protobuf::int64>()(map_key.GetInt64Value());
+        return hash<int64>()(map_key.GetInt64Value());
       case ::PROTOBUF_NAMESPACE_ID::FieldDescriptor::CPPTYPE_INT32:
-        return hash<::google::protobuf::int32>()(map_key.GetInt32Value());
+        return hash<int32>()(map_key.GetInt32Value());
       case ::PROTOBUF_NAMESPACE_ID::FieldDescriptor::CPPTYPE_UINT64:
-        return hash<::google::protobuf::uint64>()(map_key.GetUInt64Value());
+        return hash<uint64>()(map_key.GetUInt64Value());
       case ::PROTOBUF_NAMESPACE_ID::FieldDescriptor::CPPTYPE_UINT32:
-        return hash<::google::protobuf::uint32>()(map_key.GetUInt32Value());
+        return hash<uint32>()(map_key.GetUInt32Value());
       case ::PROTOBUF_NAMESPACE_ID::FieldDescriptor::CPPTYPE_BOOL:
         return hash<bool>()(map_key.GetBoolValue());
     }

@@ -36,6 +36,7 @@
 
 #include <google/protobuf/stubs/strutil.h>
 #include <google/protobuf/test_util.h>
+#include <google/protobuf/test_util2.h>
 #include <google/protobuf/unittest.pb.h>
 #include <google/protobuf/unittest_mset.pb.h>
 #include <google/protobuf/io/coded_stream.h>
@@ -58,6 +59,8 @@ namespace google {
 namespace protobuf {
 namespace internal {
 namespace {
+
+using TestUtil::EqualsToSerialized;
 
 // This test closely mirrors net/proto2/compiler/cpp/internal/unittest.cc
 // except that it uses extensions rather than regular fields.
@@ -525,7 +528,7 @@ TEST(ExtensionSetTest, SerializationToArray) {
   unittest::TestAllTypes destination;
   TestUtil::SetAllExtensions(&source);
   int size = source.ByteSize();
-  string data;
+  std::string data;
   data.resize(size);
   uint8* target = reinterpret_cast<uint8*>(::google::protobuf::string_as_array(&data));
   uint8* end = source.SerializeWithCachedSizesToArray(target);
@@ -546,7 +549,7 @@ TEST(ExtensionSetTest, SerializationToStream) {
   unittest::TestAllTypes destination;
   TestUtil::SetAllExtensions(&source);
   int size = source.ByteSize();
-  string data;
+  std::string data;
   data.resize(size);
   {
     io::ArrayOutputStream array_stream(::google::protobuf::string_as_array(&data), size, 1);
@@ -569,7 +572,7 @@ TEST(ExtensionSetTest, PackedSerializationToArray) {
   unittest::TestPackedTypes destination;
   TestUtil::SetPackedExtensions(&source);
   int size = source.ByteSize();
-  string data;
+  std::string data;
   data.resize(size);
   uint8* target = reinterpret_cast<uint8*>(::google::protobuf::string_as_array(&data));
   uint8* end = source.SerializeWithCachedSizesToArray(target);
@@ -590,7 +593,7 @@ TEST(ExtensionSetTest, PackedSerializationToStream) {
   unittest::TestPackedTypes destination;
   TestUtil::SetPackedExtensions(&source);
   int size = source.ByteSize();
-  string data;
+  std::string data;
   data.resize(size);
   {
     io::ArrayOutputStream array_stream(::google::protobuf::string_as_array(&data), size, 1);
@@ -606,7 +609,7 @@ TEST(ExtensionSetTest, NestedExtensionGroup) {
   // Serialize as TestGroup and parse as TestGroupExtension.
   unittest::TestGroup source;
   unittest::TestGroupExtension destination;
-  string data;
+  std::string data;
 
   source.mutable_optionalgroup()->set_a(117);
   source.set_optional_foreign_enum(unittest::FOREIGN_BAZ);
@@ -626,7 +629,7 @@ TEST(ExtensionSetTest, Parsing) {
   // Serialize as TestAllTypes and parse as TestAllExtensions.
   unittest::TestAllTypes source;
   unittest::TestAllExtensions destination;
-  string data;
+  std::string data;
 
   TestUtil::SetAllFields(&source);
   source.SerializeToString(&data);
@@ -639,7 +642,7 @@ TEST(ExtensionSetTest, PackedParsing) {
   // Serialize as TestPackedTypes and parse as TestPackedExtensions.
   unittest::TestPackedTypes source;
   unittest::TestPackedExtensions destination;
-  string data;
+  std::string data;
 
   TestUtil::SetPackedFields(&source);
   source.SerializeToString(&data);
@@ -650,7 +653,7 @@ TEST(ExtensionSetTest, PackedParsing) {
 TEST(ExtensionSetTest, PackedToUnpackedParsing) {
   unittest::TestPackedTypes source;
   unittest::TestUnpackedExtensions destination;
-  string data;
+  std::string data;
 
   TestUtil::SetPackedFields(&source);
   source.SerializeToString(&data);
@@ -660,7 +663,10 @@ TEST(ExtensionSetTest, PackedToUnpackedParsing) {
   // Reserialize
   unittest::TestUnpackedTypes unpacked;
   TestUtil::SetUnpackedFields(&unpacked);
-  EXPECT_TRUE(unpacked.SerializeAsString() == destination.SerializeAsString());
+  // Serialized proto has to be the same size and parsed to the same message.
+  EXPECT_EQ(unpacked.SerializeAsString().size(),
+            destination.SerializeAsString().size());
+  EXPECT_TRUE(EqualsToSerialized(unpacked, destination.SerializeAsString()));
 
   // Make sure we can add extensions.
   destination.AddExtension(unittest::unpacked_int32_extension, 1);
@@ -671,7 +677,7 @@ TEST(ExtensionSetTest, PackedToUnpackedParsing) {
 TEST(ExtensionSetTest, UnpackedToPackedParsing) {
   unittest::TestUnpackedTypes source;
   unittest::TestPackedExtensions destination;
-  string data;
+  std::string data;
 
   TestUtil::SetUnpackedFields(&source);
   source.SerializeToString(&data);
@@ -681,7 +687,10 @@ TEST(ExtensionSetTest, UnpackedToPackedParsing) {
   // Reserialize
   unittest::TestPackedTypes packed;
   TestUtil::SetPackedFields(&packed);
-  EXPECT_TRUE(packed.SerializeAsString() == destination.SerializeAsString());
+  // Serialized proto has to be the same size and parsed to the same message.
+  EXPECT_EQ(packed.SerializeAsString().size(),
+            destination.SerializeAsString().size());
+  EXPECT_TRUE(EqualsToSerialized(packed, destination.SerializeAsString()));
 
   // Make sure we can add extensions.
   destination.AddExtension(unittest::packed_int32_extension, 1);
@@ -772,8 +781,9 @@ TEST(ExtensionSetTest, SpaceUsedExcludingSelf) {
     // that gets included as well.
     unittest::TestAllExtensions message;
     const int base_size = message.SpaceUsed();
-    const string s("this is a fairly large string that will cause some "
-                   "allocation in order to store it in the extension");
+    const std::string s(
+        "this is a fairly large string that will cause some "
+        "allocation in order to store it in the extension");
     message.SetExtension(unittest::optional_string_extension, s);
     int min_expected_size = base_size + s.length();
     EXPECT_LE(min_expected_size, message.SpaceUsed());
@@ -846,8 +856,8 @@ TEST(ExtensionSetTest, SpaceUsedExcludingSelf) {
   {
     unittest::TestAllExtensions message;
     const int base_size = message.SpaceUsed();
-    int min_expected_size = sizeof(RepeatedPtrField<string>) + base_size;
-    const string value(256, 'x');
+    int min_expected_size = sizeof(RepeatedPtrField<std::string>) + base_size;
+    const std::string value(256, 'x');
     // Once items are allocated, they may stick around even when cleared so
     // without the hardcore memory management accessors there isn't a notion of
     // the empty repeated field memory usage as there is with primitive types.
@@ -936,9 +946,9 @@ TEST(ExtensionSetTest, RepeatedFields) {
     message.AddExtension(unittest::repeated_bool_extension, true);
     message.AddExtension(unittest::repeated_nested_enum_extension, nested_enum);
     message.AddExtension(unittest::repeated_string_extension,
-                         ::std::string("test"));
+                         std::string("test"));
     message.AddExtension(unittest::repeated_bytes_extension,
-                         ::std::string("test\xFF"));
+                         std::string("test\xFF"));
     message.AddExtension(
         unittest::repeated_nested_message_extension)->CopyFrom(nested_message);
     message.AddExtension(unittest::repeated_nested_enum_extension,
@@ -1019,8 +1029,8 @@ TEST(ExtensionSetTest, RepeatedFields) {
   ASSERT_EQ(110, SumAllExtensions<double>(
       message, unittest::repeated_double_extension, 0));
 
-  RepeatedPtrField<::std::string>::iterator string_iter;
-  RepeatedPtrField<::std::string>::iterator string_end;
+  RepeatedPtrField<std::string>::iterator string_iter;
+  RepeatedPtrField<std::string>::iterator string_end;
   for (string_iter = message.MutableRepeatedExtension(
           unittest::repeated_string_extension)->begin(),
        string_end  = message.MutableRepeatedExtension(
@@ -1028,8 +1038,8 @@ TEST(ExtensionSetTest, RepeatedFields) {
        string_iter != string_end; ++string_iter) {
     *string_iter += "test";
   }
-  RepeatedPtrField<::std::string>::const_iterator string_const_iter;
-  RepeatedPtrField<::std::string>::const_iterator string_const_end;
+  RepeatedPtrField<std::string>::const_iterator string_const_iter;
+  RepeatedPtrField<std::string>::const_iterator string_const_end;
   for (string_const_iter = message.GetRepeatedExtension(
            unittest::repeated_string_extension).begin(),
        string_const_end  = message.GetRepeatedExtension(
@@ -1173,9 +1183,9 @@ TEST(ExtensionSetTest, DynamicExtensions) {
 
     // If the field refers to one of the types nested in TestDynamicExtensions,
     // make it refer to the type in our dynamic proto instead.
-    string prefix = "." + template_descriptor->full_name() + ".";
+    std::string prefix = "." + template_descriptor->full_name() + ".";
     if (extension->has_type_name()) {
-      string* type_name = extension->mutable_type_name();
+      std::string* type_name = extension->mutable_type_name();
       if (HasPrefixString(*type_name, prefix)) {
         type_name->replace(0, prefix.size(), ".dynamic_extensions.");
       }
@@ -1192,7 +1202,8 @@ TEST(ExtensionSetTest, DynamicExtensions) {
   // Construct a message that we can parse with the extensions we defined.
   // Since the extensions were based off of the fields of TestDynamicExtensions,
   // we can use that message to create this test message.
-  string data;
+  std::string data;
+  unittest::TestDynamicExtensions dynamic_extension;
   {
     unittest::TestDynamicExtensions message;
     message.set_scalar_extension(123);
@@ -1218,6 +1229,7 @@ TEST(ExtensionSetTest, DynamicExtensions) {
     message.mutable_unknown_fields()->AddLengthDelimited(54321, "unknown");
 
     message.SerializeToString(&data);
+    dynamic_extension = message;
   }
 
   // Now we can parse this using our dynamic extension definitions...
@@ -1252,9 +1264,8 @@ TEST(ExtensionSetTest, DynamicExtensions) {
     message.DebugString());
 
   // Can we serialize it?
-  // (Don't use EXPECT_EQ because we don't want to dump raw binary data to the
-  // terminal on failure.)
-  EXPECT_TRUE(message.SerializeAsString() == data);
+  EXPECT_TRUE(
+      EqualsToSerialized(dynamic_extension, message.SerializeAsString()));
 
   // What if we parse using the reflection-based parser?
   {

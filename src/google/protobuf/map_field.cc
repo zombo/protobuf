@@ -96,16 +96,36 @@ void* MapFieldBase::MutableRepeatedPtrField() const { return repeated_field_; }
 void MapFieldBase::SyncRepeatedFieldWithMap() const {
   // acquire here matches with release below to ensure that we can only see a
   // value of CLEAN after all previous changes have been synced.
-  if (state_.load(std::memory_order_acquire) == STATE_MODIFIED_MAP) {
-    mutex_.Lock();
-    // Double check state, because another thread may have seen the same state
-    // and done the synchronization before the current thread.
-    if (state_.load(std::memory_order_relaxed) == STATE_MODIFIED_MAP) {
-      SyncRepeatedFieldWithMapNoLock();
-      state_.store(CLEAN, std::memory_order_release);
+  switch (state_.load(std::memory_order_acquire)) {
+      case STATE_MODIFIED_MAP:
+        mutex_.Lock();
+        // Double check state, because another thread may have seen the same
+        // state and done the synchronization before the current thread.
+        if (state_.load(std::memory_order_relaxed) == STATE_MODIFIED_MAP) {
+          SyncRepeatedFieldWithMapNoLock();
+          state_.store(CLEAN, std::memory_order_release);
+        }
+        mutex_.Unlock();
+        break;
+      case CLEAN:
+        mutex_.Lock();
+        // Double check state
+        if (state_.load(std::memory_order_relaxed) == CLEAN) {
+          if (repeated_field_ == nullptr) {
+            if (arena_ == nullptr) {
+              repeated_field_ = new RepeatedPtrField<Message>();
+            } else {
+              repeated_field_ =
+                  Arena::CreateMessage<RepeatedPtrField<Message> >(arena_);
+            }
+          }
+          state_.store(CLEAN, std::memory_order_release);
+        }
+        mutex_.Unlock();
+        break;
+      default:
+        break;
     }
-    mutex_.Unlock();
-  }
 }
 
 void MapFieldBase::SyncRepeatedFieldWithMapNoLock() const {
@@ -155,6 +175,22 @@ int DynamicMapField::size() const {
   return GetMap().size();
 }
 
+void DynamicMapField::Clear() {
+  Map<MapKey, MapValueRef>* map = &const_cast<DynamicMapField*>(this)->map_;
+  for (Map<MapKey, MapValueRef>::iterator iter = map->begin();
+       iter != map->end(); ++iter) {
+    iter->second.DeleteData();
+  }
+  map->clear();
+
+  if (MapFieldBase::repeated_field_ != nullptr) {
+    MapFieldBase::repeated_field_->Clear();
+  }
+  // Data in map and repeated field are both empty, but we can't set status
+  // CLEAN which will invalidate previous reference to map.
+  MapFieldBase::SetMapDirty();
+}
+
 bool DynamicMapField::ContainsMapKey(
     const MapKey& map_key) const {
   const Map<MapKey, MapValueRef>& map = GetMap();
@@ -182,7 +218,7 @@ void DynamicMapField::AllocateMapValue(MapValueRef* map_val) {
     HANDLE_TYPE(DOUBLE, double);
     HANDLE_TYPE(FLOAT, float);
     HANDLE_TYPE(BOOL, bool);
-    HANDLE_TYPE(STRING, string);
+    HANDLE_TYPE(STRING, std::string);
     HANDLE_TYPE(ENUM, int32);
 #undef HANDLE_TYPE
     case FieldDescriptor::CPPTYPE_MESSAGE: {
@@ -478,7 +514,7 @@ void DynamicMapField::SyncMapWithRepeatedFieldNoLock() const {
       HANDLE_TYPE(DOUBLE, double, Double);
       HANDLE_TYPE(FLOAT, float, Float);
       HANDLE_TYPE(BOOL, bool, Bool);
-      HANDLE_TYPE(STRING, string, String);
+      HANDLE_TYPE(STRING, std::string, String);
       HANDLE_TYPE(ENUM, int32, EnumValue);
 #undef HANDLE_TYPE
       case FieldDescriptor::CPPTYPE_MESSAGE: {
@@ -505,7 +541,7 @@ size_t DynamicMapField::SpaceUsedExcludingSelfNoLock() const {
     size += sizeof(it->second) * map_size;
     // If key is string, add the allocated space.
     if (it->first.type() == FieldDescriptor::CPPTYPE_STRING) {
-      size += sizeof(string) * map_size;
+      size += sizeof(std::string) * map_size;
     }
     // Add the allocated space in MapValueRef.
     switch (it->second.type()) {
@@ -521,7 +557,7 @@ size_t DynamicMapField::SpaceUsedExcludingSelfNoLock() const {
       HANDLE_TYPE(DOUBLE, double);
       HANDLE_TYPE(FLOAT, float);
       HANDLE_TYPE(BOOL, bool);
-      HANDLE_TYPE(STRING, string);
+      HANDLE_TYPE(STRING, std::string);
       HANDLE_TYPE(ENUM, int32);
 #undef HANDLE_TYPE
       case FieldDescriptor::CPPTYPE_MESSAGE: {

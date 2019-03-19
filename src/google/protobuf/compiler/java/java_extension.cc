@@ -41,6 +41,7 @@
 #include <google/protobuf/io/printer.h>
 #include <google/protobuf/stubs/strutil.h>
 
+
 namespace google {
 namespace protobuf {
 namespace compiler {
@@ -62,16 +63,17 @@ ImmutableExtensionGenerator::~ImmutableExtensionGenerator() {}
 
 // Initializes the vars referenced in the generated code templates.
 void ExtensionGenerator::InitTemplateVars(
-    const FieldDescriptor* descriptor, const string& scope, bool immutable,
-    ClassNameResolver* name_resolver, std::map<string, string>* vars_pointer) {
-  std::map<string, string> &vars = *vars_pointer;
+    const FieldDescriptor* descriptor, const std::string& scope, bool immutable,
+    ClassNameResolver* name_resolver,
+    std::map<std::string, std::string>* vars_pointer) {
+  std::map<std::string, std::string>& vars = *vars_pointer;
   vars["scope"] = scope;
   vars["name"] = UnderscoresToCamelCase(descriptor);
   vars["containing_type"] =
       name_resolver->GetClassName(descriptor->containing_type(), immutable);
-  vars["number"] = SimpleItoa(descriptor->number());
+  vars["number"] = StrCat(descriptor->number());
   vars["constant_name"] = FieldConstantName(descriptor);
-  vars["index"] = SimpleItoa(descriptor->index());
+  vars["index"] = StrCat(descriptor->index());
   vars["default"] = descriptor->is_repeated() ?
       "" : DefaultValue(descriptor, immutable, name_resolver);
   vars["type_constant"] = FieldTypeName(GetType(descriptor));
@@ -80,7 +82,7 @@ void ExtensionGenerator::InitTemplateVars(
   vars["prototype"] = "null";
 
   JavaType java_type = GetJavaType(descriptor);
-  string singular_type;
+  std::string singular_type;
   switch (java_type) {
     case JAVATYPE_MESSAGE:
       singular_type = name_resolver->GetClassName(descriptor->message_type(),
@@ -108,7 +110,7 @@ void ExtensionGenerator::InitTemplateVars(
 }
 
 void ImmutableExtensionGenerator::Generate(io::Printer* printer) {
-  std::map<string, string> vars;
+  std::map<std::string, std::string> vars;
   const bool kUseImmutableNames = true;
   InitTemplateVars(descriptor_, scope_, kUseImmutableNames, name_resolver_,
                    &vars);
@@ -152,7 +154,7 @@ int ImmutableExtensionGenerator::GenerateNonNestedInitializationCode(
     printer->Print(
         "$name$.internalInit(descriptor.getExtensions().get($index$));\n",
         "name", UnderscoresToCamelCase(descriptor_), "index",
-        SimpleItoa(descriptor_->index()));
+        StrCat(descriptor_->index()));
     bytecode_estimate += 21;
   }
   return bytecode_estimate;

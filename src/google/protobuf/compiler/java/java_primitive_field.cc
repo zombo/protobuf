@@ -46,6 +46,7 @@
 #include <google/protobuf/wire_format.h>
 #include <google/protobuf/stubs/strutil.h>
 
+
 namespace google {
 namespace protobuf {
 namespace compiler {
@@ -57,11 +58,10 @@ using internal::WireFormatLite;
 namespace {
 
 void SetPrimitiveVariables(const FieldDescriptor* descriptor,
-                           int messageBitIndex,
-                           int builderBitIndex,
+                           int messageBitIndex, int builderBitIndex,
                            const FieldGeneratorInfo* info,
                            ClassNameResolver* name_resolver,
-                           std::map<string, string>* variables) {
+                           std::map<std::string, std::string>* variables) {
   SetCommonFieldVariables(descriptor, info, variables);
   JavaType javaType = GetJavaType(descriptor);
 
@@ -74,7 +74,7 @@ void SetPrimitiveVariables(const FieldDescriptor* descriptor,
       javaType == JAVATYPE_FLOAT ||
       javaType == JAVATYPE_INT ||
       javaType == JAVATYPE_LONG) {
-    string capitalized_type = UnderscoresToCamelCase(
+    std::string capitalized_type = UnderscoresToCamelCase(
         PrimitiveTypeName(javaType), /*cap_first_letter=*/true);
     (*variables)["field_list_type"] =
         "com.google.protobuf.Internal." + capitalized_type + "List";
@@ -113,8 +113,8 @@ void SetPrimitiveVariables(const FieldDescriptor* descriptor,
   (*variables)["capitalized_type"] =
       GetCapitalizedType(descriptor, /* immutable = */ true);
   (*variables)["tag"] =
-      SimpleItoa(static_cast<int32>(WireFormat::MakeTag(descriptor)));
-  (*variables)["tag_size"] = SimpleItoa(
+      StrCat(static_cast<int32>(WireFormat::MakeTag(descriptor)));
+  (*variables)["tag_size"] = StrCat(
       WireFormat::TagSize(descriptor->number(), GetType(descriptor)));
   if (IsReferenceType(GetJavaType(descriptor))) {
     (*variables)["null_check"] =
@@ -130,7 +130,7 @@ void SetPrimitiveVariables(const FieldDescriptor* descriptor,
       ? "@java.lang.Deprecated " : "";
   int fixed_size = FixedSize(GetType(descriptor));
   if (fixed_size != -1) {
-    (*variables)["fixed_size"] = SimpleItoa(fixed_size);
+    (*variables)["fixed_size"] = StrCat(fixed_size);
   }
   (*variables)["on_changed"] = "onChanged();";
 
@@ -200,11 +200,11 @@ ImmutablePrimitiveFieldGenerator(const FieldDescriptor* descriptor,
 ImmutablePrimitiveFieldGenerator::~ImmutablePrimitiveFieldGenerator() {}
 
 int ImmutablePrimitiveFieldGenerator::GetNumBitsForMessage() const {
-  return 1;
+  return SupportFieldPresence(descriptor_->file()) ? 1 : 0;
 }
 
 int ImmutablePrimitiveFieldGenerator::GetNumBitsForBuilder() const {
-  return 1;
+  return GetNumBitsForMessage();
 }
 
 void ImmutablePrimitiveFieldGenerator::
@@ -385,31 +385,29 @@ GenerateEqualsCode(io::Printer* printer) const {
     case JAVATYPE_LONG:
     case JAVATYPE_BOOLEAN:
       printer->Print(variables_,
-        "result = result && (get$capitalized_name$()\n"
-        "    == other.get$capitalized_name$());\n");
+        "if (get$capitalized_name$()\n"
+        "    != other.get$capitalized_name$()) return false;\n");
       break;
 
     case JAVATYPE_FLOAT:
       printer->Print(variables_,
-        "result = result && (\n"
-        "    java.lang.Float.floatToIntBits(get$capitalized_name$())\n"
-        "    == java.lang.Float.floatToIntBits(\n"
-        "        other.get$capitalized_name$()));\n");
+        "if (java.lang.Float.floatToIntBits(get$capitalized_name$())\n"
+        "    != java.lang.Float.floatToIntBits(\n"
+        "        other.get$capitalized_name$())) return false;\n");
       break;
 
     case JAVATYPE_DOUBLE:
       printer->Print(variables_,
-        "result = result && (\n"
-        "    java.lang.Double.doubleToLongBits(get$capitalized_name$())\n"
-        "    == java.lang.Double.doubleToLongBits(\n"
-        "        other.get$capitalized_name$()));\n");
+        "if (java.lang.Double.doubleToLongBits(get$capitalized_name$())\n"
+        "    != java.lang.Double.doubleToLongBits(\n"
+        "        other.get$capitalized_name$())) return false;\n");
       break;
 
     case JAVATYPE_STRING:
     case JAVATYPE_BYTES:
       printer->Print(variables_,
-        "result = result && get$capitalized_name$()\n"
-        "    .equals(other.get$capitalized_name$());\n");
+        "if (!get$capitalized_name$()\n"
+        "    .equals(other.get$capitalized_name$())) return false;\n");
       break;
 
     case JAVATYPE_ENUM:
@@ -468,7 +466,7 @@ GenerateHashCode(io::Printer* printer) const {
   }
 }
 
-string ImmutablePrimitiveFieldGenerator::GetBoxedType() const {
+std::string ImmutablePrimitiveFieldGenerator::GetBoxedType() const {
   return BoxedPrimitiveTypeName(GetJavaType(descriptor_));
 }
 
@@ -926,8 +924,8 @@ GenerateSerializedSizeCode(io::Printer* printer) const {
 void RepeatedImmutablePrimitiveFieldGenerator::
 GenerateEqualsCode(io::Printer* printer) const {
   printer->Print(variables_,
-    "result = result && get$capitalized_name$List()\n"
-    "    .equals(other.get$capitalized_name$List());\n");
+    "if (!get$capitalized_name$List()\n"
+    "    .equals(other.get$capitalized_name$List())) return false;\n");
 }
 
 void RepeatedImmutablePrimitiveFieldGenerator::
@@ -939,7 +937,7 @@ GenerateHashCode(io::Printer* printer) const {
     "}\n");
 }
 
-string RepeatedImmutablePrimitiveFieldGenerator::GetBoxedType() const {
+std::string RepeatedImmutablePrimitiveFieldGenerator::GetBoxedType() const {
   return BoxedPrimitiveTypeName(GetJavaType(descriptor_));
 }
 

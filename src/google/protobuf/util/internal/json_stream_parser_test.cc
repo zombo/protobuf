@@ -140,7 +140,7 @@ class JsonStreamParserTest : public ::testing::Test {
                    bool allow_empty_null = false) {
     util::Status result =
         RunTest(json, split, coerce_utf8, allow_empty_null);
-    EXPECT_EQ(util::error::INVALID_ARGUMENT, result.error_code());
+    EXPECT_EQ(util::error::INVALID_ARGUMENT, result.code());
     StringPiece error_message(result.error_message());
     EXPECT_EQ(error_prefix, error_message.substr(0, error_prefix.size()));
   }
@@ -845,7 +845,7 @@ TEST_F(JsonStreamParserTest, UnknownCharactersInObject) {
 
 TEST_F(JsonStreamParserTest, DeepNestJsonNotExceedLimit) {
   int count = 99;
-  string str;
+  std::string str;
   for (int i = 0; i < count; ++i) {
     StrAppend(&str, "{'a':");
   }
@@ -871,7 +871,7 @@ TEST_F(JsonStreamParserTest, DeepNestJsonNotExceedLimit) {
 
 TEST_F(JsonStreamParserTest, DeepNestJsonExceedLimit) {
   int count = 98;
-  string str;
+  std::string str;
   for (int i = 0; i < count; ++i) {
     StrAppend(&str, "{'a':");
   }

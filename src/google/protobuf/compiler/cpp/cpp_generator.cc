@@ -46,6 +46,7 @@
 #include <google/protobuf/io/zero_copy_stream.h>
 
 
+
 namespace google {
 namespace protobuf {
 namespace compiler {
@@ -55,10 +56,10 @@ CppGenerator::CppGenerator() {}
 CppGenerator::~CppGenerator() {}
 
 bool CppGenerator::Generate(const FileDescriptor* file,
-                            const string& parameter,
+                            const std::string& parameter,
                             GeneratorContext* generator_context,
-                            string* error) const {
-  std::vector<std::pair<string, string> > options;
+                            std::string* error) const {
+  std::vector<std::pair<std::string, std::string> > options;
   ParseGeneratorParameter(parameter, &options);
 
   // -----------------------------------------------------------------
@@ -124,7 +125,7 @@ bool CppGenerator::Generate(const FileDescriptor* file,
   // -----------------------------------------------------------------
 
 
-  string basename = StripProto(file->name());
+  std::string basename = StripProto(file->name());
 
   if (MaybeBootstrap(file_options, generator_context, file_options.bootstrap,
                      &basename)) {
@@ -140,7 +141,7 @@ bool CppGenerator::Generate(const FileDescriptor* file,
     GeneratedCodeInfo annotations;
     io::AnnotationProtoCollector<GeneratedCodeInfo> annotation_collector(
         &annotations);
-    string info_path = basename + ".proto.h.meta";
+    std::string info_path = basename + ".proto.h.meta";
     io::Printer printer(output.get(), '$', file_options.annotate_headers
                                                ? &annotation_collector
                                                : NULL);
@@ -159,7 +160,7 @@ bool CppGenerator::Generate(const FileDescriptor* file,
     GeneratedCodeInfo annotations;
     io::AnnotationProtoCollector<GeneratedCodeInfo> annotation_collector(
         &annotations);
-    string info_path = basename + ".pb.h.meta";
+    std::string info_path = basename + ".pb.h.meta";
     io::Printer printer(output.get(), '$', file_options.annotate_headers
                                                ? &annotation_collector
                                                : NULL);
@@ -203,8 +204,7 @@ bool CppGenerator::Generate(const FileDescriptor* file,
       }
       for (int i = 0; i < num_cc_files; i++) {
         std::unique_ptr<io::ZeroCopyOutputStream> output(
-            generator_context->Open(basename + ".out/" +
-                                    SimpleItoa(i) + ".cc"));
+            generator_context->Open(StrCat(basename, ".out/", i, ".cc")));
         io::Printer printer(output.get(), '$');
         if (i < file_generator.NumMessages()) {
           file_generator.GenerateSourceForMessage(i, &printer);

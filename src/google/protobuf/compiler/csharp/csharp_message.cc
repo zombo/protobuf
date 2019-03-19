@@ -33,7 +33,6 @@
 #include <map>
 
 #include <google/protobuf/compiler/code_generator.h>
-#include <google/protobuf/compiler/plugin.h>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/io/printer.h>
@@ -63,7 +62,8 @@ MessageGenerator::MessageGenerator(const Descriptor* descriptor,
                                    const Options* options)
     : SourceGeneratorBase(descriptor->file(), options),
       descriptor_(descriptor),
-      has_bit_field_count_(0) {
+      has_bit_field_count_(0),
+      end_tag_(GetGroupEndTag(descriptor)) {
   // fields by number
   for (int i = 0; i < descriptor_->field_count(); i++) {
     fields_by_number_.push_back(descriptor_->field(i));
@@ -486,7 +486,7 @@ void MessageGenerator::GenerateMergingMethods(io::Printer* printer) {
     "}\n");
   // Merge non-oneof fields
   for (int i = 0; i < descriptor_->field_count(); i++) {
-    if (!descriptor_->field(i)->containing_oneof()) {      
+    if (!descriptor_->field(i)->containing_oneof()) {
       std::unique_ptr<FieldGeneratorBase> generator(
           CreateFieldGeneratorInternal(descriptor_->field(i)));
       generator->GenerateMergingCode(printer);
@@ -539,10 +539,14 @@ void MessageGenerator::GenerateMergingMethods(io::Printer* printer) {
   } else {
     printer->Print(
       "default:\n"
-      "  if (!pb::UnknownFieldSet.MergeFieldFrom(ref _unknownFields, input)) {\n"
-      "    return;\n"
-      "  }\n"
+      "  _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);\n"
       "  break;\n");
+    if (end_tag_ != 0) {
+      printer->Print(
+        "$end_tag$:\n"
+        "  return;\n",
+        "end_tag", SimpleItoa(end_tag_));
+    }
   }
   for (int i = 0; i < fields_by_number().size(); i++) {
     const FieldDescriptor* field = fields_by_number()[i];

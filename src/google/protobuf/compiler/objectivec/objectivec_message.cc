@@ -42,7 +42,7 @@
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <google/protobuf/wire_format.h>
-#include <google/protobuf/wire_format_lite_inl.h>
+#include <google/protobuf/wire_format_lite.h>
 #include <google/protobuf/descriptor.pb.h>
 
 namespace google {
@@ -604,7 +604,9 @@ void MessageGenerator::GenerateSource(io::Printer* printer) {
           "suffix", suffix_added);
     }
     printer->Print(
-        "    NSAssert(descriptor == nil, @\"Startup recursed!\");\n"
+        "    #if defined(DEBUG) && DEBUG\n"
+        "      NSAssert(descriptor == nil, @\"Startup recursed!\");\n"
+        "    #endif  // DEBUG\n"
         "    descriptor = localDescriptor;\n"
         "  }\n"
         "  return descriptor;\n"

@@ -35,16 +35,11 @@
 
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/stubs/logging.h>
+#include <google/protobuf/type.pb.h>
 #include <google/protobuf/stubs/stringpiece.h>
 #include <google/protobuf/stubs/statusor.h>
 
 #include <google/protobuf/port_def.inc>
-
-namespace google {
-namespace protobuf {
-class Enum;
-}  // namespace protobuf
-}  // namespace google
 
 namespace google {
 namespace protobuf {
@@ -124,7 +119,7 @@ class PROTOBUF_EXPORT DataPiece {
   bool use_strict_base64_decoding() { return use_strict_base64_decoding_; }
 
   StringPiece str() const {
-    GOOGLE_LOG_IF(DFATAL, type_ != TYPE_STRING) << "Not a std::string type.";
+    GOOGLE_LOG_IF(DFATAL, type_ != TYPE_STRING) << "Not a string type.";
     return str_;
   }
 
@@ -169,7 +164,10 @@ class PROTOBUF_EXPORT DataPiece {
   // If none of these succeeds, returns a conversion error status.
   util::StatusOr<int> ToEnum(const google::protobuf::Enum* enum_type,
                                bool use_lower_camel_for_enums) const {
-    return ToEnum(enum_type, use_lower_camel_for_enums, false, nullptr);
+    return ToEnum(enum_type, use_lower_camel_for_enums,
+                  /* ignore_unknown_enum_values */ false,
+                  /* case_insensitive_enum_parsing */ true,
+                  /* is_unknown_enum_value */ nullptr);
   }
 
  private:
@@ -186,6 +184,7 @@ class PROTOBUF_EXPORT DataPiece {
   // unknown enum values.
   util::StatusOr<int> ToEnum(const google::protobuf::Enum* enum_type,
                                bool use_lower_camel_for_enums,
+                               bool case_insensitive_enum_parsing,
                                bool ignore_unknown_enum_values,
                                bool* is_unknown_enum_value) const;
 

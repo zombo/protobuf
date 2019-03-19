@@ -44,12 +44,12 @@
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/arenastring.h>
 #include <google/protobuf/extension_set.h>
+#include <google/protobuf/generated_message_table_driven.h>
 #include <google/protobuf/message_lite.h>
 #include <google/protobuf/metadata_lite.h>
 #include <google/protobuf/stubs/mutex.h>
 #include <google/protobuf/repeated_field.h>
 #include <google/protobuf/wire_format_lite.h>
-#include <google/protobuf/wire_format_lite_inl.h>
 
 #include <google/protobuf/port_def.inc>
 
@@ -61,9 +61,11 @@ namespace internal {
 void DestroyMessage(const void* message) {
   static_cast<const MessageLite*>(message)->~MessageLite();
 }
-void DestroyString(const void* s) { static_cast<const string*>(s)->~string(); }
+void DestroyString(const void* s) {
+  static_cast<const std::string*>(s)->~string();
+}
 
-ExplicitlyConstructed<::std::string> fixed_address_empty_string;
+ExplicitlyConstructed<std::string> fixed_address_empty_string;
 
 
 static bool InitProtobufDefaultsImpl() {
@@ -77,7 +79,7 @@ void InitProtobufDefaults() {
   (void)is_inited;
 }
 
-size_t StringSpaceUsedExcludingSelfLong(const string& str) {
+size_t StringSpaceUsedExcludingSelfLong(const std::string& str) {
   const void* start = &str;
   const void* end = &str + 1;
   if (start <= str.data() && str.data() < end) {
@@ -224,7 +226,7 @@ struct PrimitiveTypeHelper<WireFormatLite::TYPE_DOUBLE>
 
 template <>
 struct PrimitiveTypeHelper<WireFormatLite::TYPE_STRING> {
-  typedef string Type;
+  typedef std::string Type;
   static void Serialize(const void* ptr, io::CodedOutputStream* output) {
     const Type& value = *static_cast<const Type*>(ptr);
     output->WriteVarint32(value.size());
@@ -293,8 +295,15 @@ void SerializeMessageNoTable(const MessageLite* msg,
 }
 
 void SerializeMessageNoTable(const MessageLite* msg, ArrayOutput* output) {
-  output->ptr = msg->InternalSerializeWithCachedSizesToArray(
-      output->is_deterministic, output->ptr);
+  if (output->is_deterministic) {
+    io::ArrayOutputStream array_stream(output->ptr, INT_MAX);
+    io::CodedOutputStream o(&array_stream);
+    o.SetSerializationDeterministic(true);
+    msg->SerializeWithCachedSizes(&o);
+    output->ptr += o.ByteCount();
+  } else {
+    output->ptr = msg->InternalSerializeWithCachedSizesToArray(output->ptr);
+  }
 }
 
 // Helper to branch to fast path if possible
@@ -303,14 +312,15 @@ void SerializeMessageDispatch(const MessageLite& msg,
                               int32 cached_size,
                               io::CodedOutputStream* output) {
   const uint8* base = reinterpret_cast<const uint8*>(&msg);
-  // Try the fast path
-  uint8* ptr = output->GetDirectBufferForNBytesAndAdvance(cached_size);
-  if (ptr) {
-    // We use virtual dispatch to enable dedicated generated code for the
-    // fast path.
-    msg.InternalSerializeWithCachedSizesToArray(
-        output->IsSerializationDeterministic(), ptr);
-    return;
+  if (!output->IsSerializationDeterministic()) {
+    // Try the fast path
+    uint8* ptr = output->GetDirectBufferForNBytesAndAdvance(cached_size);
+    if (ptr) {
+      // We use virtual dispatch to enable dedicated generated code for the
+      // fast path.
+      msg.InternalSerializeWithCachedSizesToArray(ptr);
+      return;
+    }
   }
   SerializeInternal(base, field_table, num_fields, output);
 }
@@ -414,7 +424,7 @@ struct SingularFieldHelper<FieldMetadata::kInlinedType> {
   template <typename O>
   static void Serialize(const void* field, const FieldMetadata& md, O* output) {
     WriteTagTo(md.tag, output);
-    SerializeTo<FieldMetadata::kInlinedType>(&Get<::std::string>(field), output);
+    SerializeTo<FieldMetadata::kInlinedType>(&Get<std::string>(field), output);
   }
 };
 
@@ -547,7 +557,7 @@ struct OneOfFieldHelper<FieldMetadata::kInlinedType> {
   template <typename O>
   static void Serialize(const void* field, const FieldMetadata& md, O* output) {
     SingularFieldHelper<FieldMetadata::kInlinedType>::Serialize(
-        Get<const ::std::string*>(field), md, output);
+        Get<const std::string*>(field), md, output);
   }
 };
 
@@ -593,7 +603,7 @@ bool IsNull<WireFormatLite::TYPE_MESSAGE>(const void* ptr) {
 
 template <>
 bool IsNull<FieldMetadata::kInlinedType>(const void* ptr) {
-  return static_cast<const ::std::string*>(ptr)->empty();
+  return static_cast<const std::string*>(ptr)->empty();
 }
 
 #define SERIALIZERS_FOR_TYPE(type)                                            \
@@ -647,7 +657,7 @@ void SerializeInternal(const uint8* base,
 
       // Special cases
       case FieldMetadata::kSpecial:
-	    func = reinterpret_cast<SpecialSerializer>(
+        func = reinterpret_cast<SpecialSerializer>(
             const_cast<void*>(field_metadata.ptr));
         func (base, field_metadata.offset, field_metadata.tag,
             field_metadata.has_offset, output);
@@ -694,9 +704,9 @@ uint8* SerializeInternalToArray(const uint8* base,
         io::ArrayOutputStream array_stream(array_output.ptr, INT_MAX);
         io::CodedOutputStream output(&array_stream);
         output.SetSerializationDeterministic(is_deterministic);
-		func =  reinterpret_cast<SpecialSerializer>(
+                func =  reinterpret_cast<SpecialSerializer>(
             const_cast<void*>(field_metadata.ptr));
-		func (base, field_metadata.offset, field_metadata.tag,
+                func (base, field_metadata.offset, field_metadata.tag,
             field_metadata.has_offset, &output);
         array_output.ptr += output.ByteCount();
       } break;

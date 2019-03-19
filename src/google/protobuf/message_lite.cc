@@ -44,6 +44,7 @@
 #include <google/protobuf/io/zero_copy_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/arena.h>
+#include <google/protobuf/generated_message_table_driven.h>
 #include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/message_lite.h>
 #include <google/protobuf/repeated_field.h>
@@ -55,7 +56,7 @@
 namespace google {
 namespace protobuf {
 
-string MessageLite::InitializationErrorString() const {
+std::string MessageLite::InitializationErrorString() const {
   return "(cannot determine missing fields for lite message)";
 }
 
@@ -82,8 +83,8 @@ void ByteSizeConsistencyError(size_t byte_size_before_serialization,
   GOOGLE_LOG(FATAL) << "This shouldn't be called if all the sizes are equal.";
 }
 
-string InitializationErrorMessage(const char* action,
-                                  const MessageLite& message) {
+std::string InitializationErrorMessage(const char* action,
+                                       const MessageLite& message) {
   // Note:  We want to avoid depending on strutil in the lite library, otherwise
   //   we'd use:
   //
@@ -93,7 +94,7 @@ string InitializationErrorMessage(const char* action,
   //   action, message.GetTypeName(),
   //   message.InitializationErrorString());
 
-  string result;
+  std::string result;
   result += "Can't ";
   result += action;
   result += " message of type \"";
@@ -116,92 +117,35 @@ void MessageLite::LogInitializationErrorMessage() const {
 namespace internal {
 
 #if GOOGLE_PROTOBUF_ENABLE_EXPERIMENTAL_PARSER
-template <typename Next>
-bool ParseStream(const Next& next, MessageLite* msg) {
-  internal::ParseContext ctx(io::CodedInputStream::GetDefaultRecursionLimit());
-  EpsCopyParser<false> parser({msg->_ParseFunc(), msg}, &ctx);
-  auto range = next();
-  while (!range.empty()) {
-    if (!parser.Parse(range)) return false;
-    range = next();
-  }
-  return parser.Done();
-}
 
 template <bool aliasing>
 bool MergePartialFromImpl(StringPiece input, MessageLite* msg) {
-  auto begin = input.data();
-  int size = input.size();
-  ParseContext ctx(io::CodedInputStream::GetDefaultRecursionLimit());
-  internal::ParseClosure parser = {msg->_ParseFunc(), msg};
-  // TODO(gerbens) fine tune
-  constexpr int kThreshold = 48;
-  static_assert(kThreshold >= ParseContext::kSlopBytes,
-                "Requires enough room for at least kSlopBytes to be copied.");
-  // TODO(gerbens) This could be left uninitialized and given an MSAN
-  // annotation instead.
-  char buffer[kThreshold + ParseContext::kSlopBytes] = {};
-  if (size <= kThreshold) {
-    std::memcpy(buffer, begin, size);
-    if (aliasing) {
-      ctx.extra_parse_data().aliasing =
-          reinterpret_cast<std::uintptr_t>(begin) -
-          reinterpret_cast<std::uintptr_t>(buffer);
-    }
-    return ctx.ParseExactRange(parser, buffer, buffer + size);
-  }
-  if (aliasing) {
-    ctx.extra_parse_data().aliasing = ParseContext::ExtraParseData::kNoDelta;
-  }
-  size -= ParseContext::kSlopBytes;
-  int overrun = 0;
-  ctx.StartParse(parser);
-  if (!ctx.ParseRange(StringPiece(begin, size), &overrun)) return false;
-  begin += size;
-  std::memcpy(buffer, begin, ParseContext::kSlopBytes);
-  if (aliasing) {
-    ctx.extra_parse_data().aliasing = reinterpret_cast<std::uintptr_t>(begin) -
-        reinterpret_cast<std::uintptr_t>(buffer);
-  }
-  return ctx.ParseRange({buffer, ParseContext::kSlopBytes}, &overrun) &&
-         ctx.ValidEnd(overrun);
-}
-
-StringPiece Next(BoundedZCIS* input) {
-  const void* data;
-  int size;
-  if (input->limit == 0) return {};
-  while (input->zcis->Next(&data, &size)) {
-    if (size != 0) {
-      input->limit -= size;
-      if (input->limit < 0) {
-        size += input->limit;
-        input->zcis->BackUp(-input->limit);
-        input->limit = 0;
-      }
-      return StringPiece(static_cast<const char*>(data), size);
-    }
-  }
-  return {};
-}
-
-template <bool aliasing>
-bool MergePartialFromImpl(BoundedZCIS input, MessageLite* msg) {
-  // TODO(gerbens) implement aliasing
-  auto next = [&input]() { return Next(&input); };
-  return ParseStream(next, msg) && input.limit == 0;
+  const char* ptr;
+  internal::ParseContext ctx(io::CodedInputStream::GetDefaultRecursionLimit(),
+                             aliasing, &ptr, input);
+  return ctx.AtLegitimateEnd(msg->_InternalParse(ptr, &ctx));
 }
 
 template <bool aliasing>
 bool MergePartialFromImpl(io::ZeroCopyInputStream* input, MessageLite* msg) {
-  // TODO(gerbens) implement aliasing
-  BoundedZCIS bounded_zcis{input, INT_MAX};
-  auto next = [&bounded_zcis]() { return Next(&bounded_zcis); };
-  return ParseStream(next, msg) && bounded_zcis.limit > 0;
+  const char* ptr;
+  internal::ParseContext ctx(io::CodedInputStream::GetDefaultRecursionLimit(),
+                             aliasing, &ptr, input);
+  return ctx.AtLegitimateEnd(msg->_InternalParse(ptr, &ctx));
 }
 
+template <bool aliasing>
+bool MergePartialFromImpl(BoundedZCIS input, MessageLite* msg) {
+  // We must prevent reading more than limit from the input. Due to the nature
+  // of EpsCopyInputStream the stream will always read kSlopBytes ahead of
+  // the parser, we can't always backup so we must prevent from reading past
+  // limit in the first place.
+  io::LimitingInputStream zcis(input.zcis, input.limit);
+  return MergePartialFromImpl<aliasing>(&zcis, msg) &&
+         zcis.ByteCount() == input.limit;
+}
 
-#else
+#else  // !GOOGLE_PROTOBUF_ENABLE_EXPERIMENTAL_PARSER
 
 inline bool InlineMergePartialEntireStream(io::CodedInputStream* cis,
                                            MessageLite* message,
@@ -231,7 +175,7 @@ bool MergePartialFromImpl(io::ZeroCopyInputStream* input, MessageLite* msg) {
   return InlineMergePartialEntireStream(&decoder, msg, aliasing);
 }
 
-#endif
+#endif  // !GOOGLE_PROTOBUF_ENABLE_EXPERIMENTAL_PARSER
 
 template bool MergePartialFromImpl<false>(StringPiece input,
                                           MessageLite* msg);
@@ -255,42 +199,46 @@ MessageLite* MessageLite::New(Arena* arena) const {
 }
 
 #if GOOGLE_PROTOBUF_ENABLE_EXPERIMENTAL_PARSER
-bool MessageLite::MergePartialFromCodedStream(io::CodedInputStream* input) {
-  // MergePartialFromCodedStream must leave input in "exactly" the same state
-  // as the old implementation. At least when the parse is successful. For
-  // MergePartialFromCodedStream a successful parse can also occur by ending
-  // on a zero tag or an end-group tag. In these cases input is left precisely
-  // past the terminating tag and last_tag_ is set to the terminating tags
-  // value. If the parse ended on a limit (either a pushed limit or end of the
-  // ZeroCopyInputStream) legitimate_end_ is set to true.
-  int size = 0;
-  auto next = [input, &size]() {
-    const void* ptr;
-    input->Skip(size);  // skip previous buffer
-    if (!input->GetDirectBufferPointer(&ptr, &size)) return StringPiece{};
-    return StringPiece(static_cast<const char*>(ptr), size);
-  };
-  internal::ParseContext ctx(input->RecursionBudget());
-  ctx.extra_parse_data().pool = input->GetExtensionPool();
-  ctx.extra_parse_data().factory = input->GetExtensionFactory();
-  internal::EpsCopyParser<true> parser({_ParseFunc(), this}, &ctx);
-  auto range = next();
-  while (!range.empty()) {
-    if (!parser.Parse(range)) {
-      if (!ctx.EndedOnTag()) return false;
-      // Parse ended on a zero or end-group tag, leave the stream in the
-      // appropriate state. Note we only skip forward, due to using
-      // ensure_non_negative_skip being set to true in parser.
-      input->Skip(parser.Skip());
-      input->SetLastTag(ctx.LastTag());
-      return true;
-    }
-    range = next();
+class ZeroCopyCodedInputStream : public io::ZeroCopyInputStream {
+ public:
+  ZeroCopyCodedInputStream(io::CodedInputStream* cis) : cis_(cis) {}
+  bool Next(const void** data, int* size) final {
+    if (!cis_->GetDirectBufferPointer(data, size)) return false;
+    cis_->Skip(*size);
+    return true;
   }
-  input->SetConsumed();
-  return parser.Done();
+  void BackUp(int count) final { cis_->Advance(-count); }
+  bool Skip(int count) final { return cis_->Skip(count); }
+  int64 ByteCount() const final { return 0; }
+
+  bool aliasing_enabled() { return cis_->aliasing_enabled_; }
+
+ private:
+  io::CodedInputStream* cis_;
+};
+
+bool MessageLite::MergePartialFromCodedStream(io::CodedInputStream* input) {
+  ZeroCopyCodedInputStream zcis(input);
+  const char* ptr;
+  internal::ParseContext ctx(input->RecursionBudget(), zcis.aliasing_enabled(),
+                             &ptr, &zcis);
+  // MergePartialFromCodedStream allows terminating the wireformat by 0 or
+  // end-group tag. Leaving it up to the caller to verify correct ending by
+  // calling LastTagWas on input. We need to maintain this behavior.
+  ctx.TrackCorrectEnding();
+  ctx.data().pool = input->GetExtensionPool();
+  ctx.data().factory = input->GetExtensionFactory();
+  ptr = _InternalParse(ptr, &ctx);
+  if (!ptr) return false;
+  ctx.BackUp(ptr);
+  if (ctx.LastTagMinus1() != 0) {
+    input->SetLastTag(ctx.LastTagMinus1() + 1);
+    return true;
+  }
+  if (ctx.AtLimit(ptr)) input->SetConsumed();
+  return true;
 }
-#endif
+#endif  // GOOGLE_PROTOBUF_ENABLE_EXPERIMENTAL_PARSER
 
 bool MessageLite::MergeFromCodedStream(io::CodedInputStream* input) {
   return MergePartialFromCodedStream(input) && IsInitializedWithErrors();
@@ -335,11 +283,11 @@ bool MessageLite::ParsePartialFromBoundedZeroCopyStream(
   return ParseFrom<kParsePartial>(internal::BoundedZCIS{input, size});
 }
 
-bool MessageLite::ParseFromString(const string& data) {
+bool MessageLite::ParseFromString(const std::string& data) {
   return ParseFrom<kParse>(data);
 }
 
-bool MessageLite::ParsePartialFromString(const string& data) {
+bool MessageLite::ParsePartialFromString(const std::string& data) {
   return ParseFrom<kParsePartial>(data);
 }
 
@@ -351,12 +299,35 @@ bool MessageLite::ParsePartialFromArray(const void* data, int size) {
   return ParseFrom<kParsePartial>(as_string_view(data, size));
 }
 
+bool MessageLite::MergeFromString(const std::string& data) {
+  return ParseFrom<kMerge>(data);
+}
+
 
 // ===================================================================
 
 uint8* MessageLite::SerializeWithCachedSizesToArray(uint8* target) const {
-  return InternalSerializeWithCachedSizesToArray(
-      io::CodedOutputStream::IsDefaultSerializationDeterministic(), target);
+  const internal::SerializationTable* table =
+      static_cast<const internal::SerializationTable*>(InternalGetTable());
+  auto deterministic =
+      io::CodedOutputStream::IsDefaultSerializationDeterministic();
+  if (table) {
+    return internal::TableSerializeToArray(*this, table, deterministic, target);
+  } else {
+    if (deterministic) {
+      // We only optimize this when using optimize_for = SPEED.  In other cases
+      // we just use the CodedOutputStream path.
+      int size = GetCachedSize();
+      io::ArrayOutputStream out(target, size);
+      io::CodedOutputStream coded_out(&out);
+      coded_out.SetSerializationDeterministic(true);
+      SerializeWithCachedSizes(&coded_out);
+      GOOGLE_CHECK(!coded_out.HadError());
+      return target + size;
+    } else {
+      return InternalSerializeWithCachedSizesToArray(target);
+    }
+  }
 }
 
 bool MessageLite::SerializeToCodedStream(io::CodedOutputStream* output) const {
@@ -373,29 +344,29 @@ bool MessageLite::SerializePartialToCodedStream(
     return false;
   }
 
-  uint8* buffer = output->GetDirectBufferForNBytesAndAdvance(size);
-  if (buffer != NULL) {
-    uint8* end = InternalSerializeWithCachedSizesToArray(
-        output->IsSerializationDeterministic(), buffer);
-    if (end - buffer != size) {
-      ByteSizeConsistencyError(size, ByteSizeLong(), end - buffer, *this);
+  if (!output->IsSerializationDeterministic()) {
+    uint8* buffer = output->GetDirectBufferForNBytesAndAdvance(size);
+    if (buffer != nullptr) {
+      uint8* end = InternalSerializeWithCachedSizesToArray(buffer);
+      if (end - buffer != size) {
+        ByteSizeConsistencyError(size, ByteSizeLong(), end - buffer, *this);
+      }
+      return true;
     }
-    return true;
-  } else {
-    int original_byte_count = output->ByteCount();
-    SerializeWithCachedSizes(output);
-    if (output->HadError()) {
-      return false;
-    }
-    int final_byte_count = output->ByteCount();
-
-    if (final_byte_count - original_byte_count != size) {
-      ByteSizeConsistencyError(size, ByteSizeLong(),
-                               final_byte_count - original_byte_count, *this);
-    }
-
-    return true;
   }
+  int original_byte_count = output->ByteCount();
+  SerializeWithCachedSizes(output);
+  if (output->HadError()) {
+    return false;
+  }
+  int final_byte_count = output->ByteCount();
+
+  if (final_byte_count - original_byte_count != size) {
+    ByteSizeConsistencyError(size, ByteSizeLong(),
+                             final_byte_count - original_byte_count, *this);
+  }
+
+  return true;
 }
 
 bool MessageLite::SerializeToZeroCopyStream(
@@ -410,12 +381,12 @@ bool MessageLite::SerializePartialToZeroCopyStream(
   return SerializePartialToCodedStream(&encoder);
 }
 
-bool MessageLite::AppendToString(string* output) const {
+bool MessageLite::AppendToString(std::string* output) const {
   GOOGLE_DCHECK(IsInitialized()) << InitializationErrorMessage("serialize", *this);
   return AppendPartialToString(output);
 }
 
-bool MessageLite::AppendPartialToString(string* output) const {
+bool MessageLite::AppendPartialToString(std::string* output) const {
   size_t old_size = output->size();
   size_t byte_size = ByteSizeLong();
   if (byte_size > INT_MAX) {
@@ -434,12 +405,12 @@ bool MessageLite::AppendPartialToString(string* output) const {
   return true;
 }
 
-bool MessageLite::SerializeToString(string* output) const {
+bool MessageLite::SerializeToString(std::string* output) const {
   output->clear();
   return AppendToString(output);
 }
 
-bool MessageLite::SerializePartialToString(string* output) const {
+bool MessageLite::SerializePartialToString(std::string* output) const {
   output->clear();
   return AppendPartialToString(output);
 }
@@ -465,18 +436,18 @@ bool MessageLite::SerializePartialToArray(void* data, int size) const {
   return true;
 }
 
-string MessageLite::SerializeAsString() const {
+std::string MessageLite::SerializeAsString() const {
   // If the compiler implements the (Named) Return Value Optimization,
   // the local variable 'output' will not actually reside on the stack
   // of this function, but will be overlaid with the object that the
   // caller supplied for the return value to be constructed in.
-  string output;
+  std::string output;
   if (!AppendToString(&output)) output.clear();
   return output;
 }
 
-string MessageLite::SerializePartialAsString() const {
-  string output;
+std::string MessageLite::SerializePartialAsString() const {
+  std::string output;
   if (!AppendPartialToString(&output)) output.clear();
   return output;
 }
@@ -496,7 +467,7 @@ void MessageLite::SerializeWithCachedSizes(
 // generated code for maximum speed. If the proto is optimized for size or
 // is lite, then we need to specialize this to avoid infinite recursion.
 uint8* MessageLite::InternalSerializeWithCachedSizesToArray(
-    bool deterministic, uint8* target) const {
+    uint8* target) const {
   const internal::SerializationTable* table =
       static_cast<const internal::SerializationTable*>(InternalGetTable());
   if (table == NULL) {
@@ -505,12 +476,11 @@ uint8* MessageLite::InternalSerializeWithCachedSizesToArray(
     int size = GetCachedSize();
     io::ArrayOutputStream out(target, size);
     io::CodedOutputStream coded_out(&out);
-    coded_out.SetSerializationDeterministic(deterministic);
     SerializeWithCachedSizes(&coded_out);
     GOOGLE_CHECK(!coded_out.HadError());
     return target + size;
   } else {
-    return internal::TableSerializeToArray(*this, table, deterministic, target);
+    return internal::TableSerializeToArray(*this, table, false, target);
   }
 }
 
@@ -527,7 +497,8 @@ void GenericTypeHandler<MessageLite>::Merge(const MessageLite& from,
   to->CheckTypeAndMergeFrom(from);
 }
 template <>
-void GenericTypeHandler<string>::Merge(const string& from, string* to) {
+void GenericTypeHandler<std::string>::Merge(const std::string& from,
+                                            std::string* to) {
   *to = from;
 }
 

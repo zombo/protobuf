@@ -73,6 +73,7 @@
 #define PROTOBUF_EXPORT
 #endif
 
+
 namespace google {
 namespace protobuf {
 
@@ -232,6 +233,8 @@ class PROTOBUF_EXPORT LazyDescriptor {
 // Use DescriptorPool to construct your own descriptors.
 class PROTOBUF_EXPORT Descriptor {
  public:
+  typedef DescriptorProto Proto;
+
   // The name of the message type, not including its scope.
   const std::string& name() const;
 
@@ -345,6 +348,8 @@ class PROTOBUF_EXPORT Descriptor {
   // A range of field numbers which are designated for third-party
   // extensions.
   struct ExtensionRange {
+    typedef DescriptorProto_ExtensionRange Proto;
+
     typedef ExtensionRangeOptions OptionsType;
 
     // See Descriptor::CopyTo().
@@ -382,11 +387,13 @@ class PROTOBUF_EXPORT Descriptor {
 
   // Similar to FindFieldByLowercaseName(), but finds extensions defined within
   // this message type's scope.
-  const FieldDescriptor* FindExtensionByLowercaseName(const std::string& name) const;
+  const FieldDescriptor* FindExtensionByLowercaseName(
+      const std::string& name) const;
 
   // Similar to FindFieldByCamelcaseName(), but finds extensions defined within
   // this message type's scope.
-  const FieldDescriptor* FindExtensionByCamelcaseName(const std::string& name) const;
+  const FieldDescriptor* FindExtensionByCamelcaseName(
+      const std::string& name) const;
 
   // Reserved fields -------------------------------------------------
 
@@ -442,7 +449,7 @@ class PROTOBUF_EXPORT Descriptor {
   // correct depth. Takes |options| to control debug-string options, and
   // |include_opening_clause| to indicate whether the "message ... " part of the
   // clause has already been generated (this varies depending on context).
-  void DebugString(int depth, std::string *contents,
+  void DebugString(int depth, std::string* contents,
                    const DebugStringOptions& options,
                    bool include_opening_clause) const;
 
@@ -511,6 +518,8 @@ class PROTOBUF_EXPORT Descriptor {
 // Use DescriptorPool to construct your own descriptors.
 class PROTOBUF_EXPORT FieldDescriptor {
  public:
+  typedef FieldDescriptorProto Proto;
+
   // Identifies a field type.  0 is reserved for errors.  The order is weird
   // for historical reasons.  Types 12 and up are new in proto2.
   enum Type {
@@ -582,9 +591,9 @@ class PROTOBUF_EXPORT FieldDescriptor {
   // Users may not declare fields that use reserved numbers.
   static const int kLastReservedNumber  = 19999;
 
-  const std::string& name() const;        // Name of this field within the message.
-  const std::string& full_name() const;   // Fully-qualified name of the field.
-  const std::string& json_name() const;   // JSON name of this field.
+  const std::string& name() const;  // Name of this field within the message.
+  const std::string& full_name() const;  // Fully-qualified name of the field.
+  const std::string& json_name() const;  // JSON name of this field.
   const FileDescriptor* file() const;// File in which this field was defined.
   bool is_extension() const;         // Is this an extension field?
   int number() const;                // Declared tag number.
@@ -738,7 +747,8 @@ class PROTOBUF_EXPORT FieldDescriptor {
   // See Descriptor::DebugString().
   enum PrintLabelFlag { PRINT_LABEL, OMIT_LABEL };
   void DebugString(int depth, PrintLabelFlag print_label_flag,
-                   std::string* contents, const DebugStringOptions& options) const;
+                   std::string* contents,
+                   const DebugStringOptions& options) const;
 
   // formats the default value appropriately and returns it as a string.
   // Must have a default value to call this. If quote_string_type is true, then
@@ -821,6 +831,8 @@ class PROTOBUF_EXPORT FieldDescriptor {
 // Describes a oneof defined in a message type.
 class PROTOBUF_EXPORT OneofDescriptor {
  public:
+  typedef OneofDescriptorProto Proto;
+
   const std::string& name() const;       // Name of this oneof.
   const std::string& full_name() const;  // Fully-qualified name of the oneof.
 
@@ -895,6 +907,8 @@ class PROTOBUF_EXPORT OneofDescriptor {
 // to construct your own descriptors.
 class PROTOBUF_EXPORT EnumDescriptor {
  public:
+  typedef EnumDescriptorProto Proto;
+
   // The name of this enum type in the containing scope.
   const std::string& name() const;
 
@@ -1002,7 +1016,7 @@ class PROTOBUF_EXPORT EnumDescriptor {
 
 
   // See Descriptor::DebugString().
-  void DebugString(int depth, std::string *contents,
+  void DebugString(int depth, std::string* contents,
                    const DebugStringOptions& options) const;
 
   // Walks up the descriptor tree to generate the source location path
@@ -1051,6 +1065,8 @@ class PROTOBUF_EXPORT EnumDescriptor {
 // your own descriptors.
 class PROTOBUF_EXPORT EnumValueDescriptor {
  public:
+  typedef EnumValueDescriptorProto Proto;
+
   const std::string& name() const;  // Name of this enum constant.
   int index() const;           // Index within the enums's Descriptor.
   int number() const;          // Numeric value of this enum constant.
@@ -1082,7 +1098,6 @@ class PROTOBUF_EXPORT EnumValueDescriptor {
   // See Descriptor::DebugStringWithOptions().
   std::string DebugStringWithOptions(const DebugStringOptions& options) const;
 
-
   // Source Location ---------------------------------------------------
 
   // Updates |*out_location| to the source location of the complete
@@ -1098,7 +1113,7 @@ class PROTOBUF_EXPORT EnumValueDescriptor {
   friend class compiler::cpp::Formatter;
 
   // See Descriptor::DebugString().
-  void DebugString(int depth, std::string *contents,
+  void DebugString(int depth, std::string* contents,
                    const DebugStringOptions& options) const;
 
   // Walks up the descriptor tree to generate the source location path
@@ -1123,12 +1138,12 @@ class PROTOBUF_EXPORT EnumValueDescriptor {
   GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(EnumValueDescriptor);
 };
 
-// Describes an RPC service.  To get the ServiceDescriptor for a service,
-// call Service::GetDescriptor().  Generated service classes also have a
-// static method called descriptor() which returns the type's
-// ServiceDescriptor.  Use DescriptorPool to construct your own descriptors.
+// Describes an RPC service. Use DescriptorPool to construct your own
+// descriptors.
 class PROTOBUF_EXPORT ServiceDescriptor {
  public:
+  typedef ServiceDescriptorProto Proto;
+
   // The name of the service, not including its containing scope.
   const std::string& name() const;
   // The fully-qualified name of the service, scope delimited by periods.
@@ -1162,7 +1177,6 @@ class PROTOBUF_EXPORT ServiceDescriptor {
   // See Descriptor::DebugStringWithOptions().
   std::string DebugStringWithOptions(const DebugStringOptions& options) const;
 
-
   // Source Location ---------------------------------------------------
 
   // Updates |*out_location| to the source location of the complete
@@ -1178,7 +1192,8 @@ class PROTOBUF_EXPORT ServiceDescriptor {
   friend class compiler::cpp::Formatter;
 
   // See Descriptor::DebugString().
-  void DebugString(std::string *contents, const DebugStringOptions& options) const;
+  void DebugString(std::string* contents,
+                   const DebugStringOptions& options) const;
 
   // Walks up the descriptor tree to generate the source location path
   // to this descriptor from the file root.
@@ -1209,6 +1224,8 @@ class PROTOBUF_EXPORT ServiceDescriptor {
 // own descriptors.
 class PROTOBUF_EXPORT MethodDescriptor {
  public:
+  typedef MethodDescriptorProto Proto;
+
   // Name of this method, not including containing scope.
   const std::string& name() const;
   // The fully-qualified name of the method, scope delimited by periods.
@@ -1246,7 +1263,6 @@ class PROTOBUF_EXPORT MethodDescriptor {
   // See Descriptor::DebugStringWithOptions().
   std::string DebugStringWithOptions(const DebugStringOptions& options) const;
 
-
   // Source Location ---------------------------------------------------
 
   // Updates |*out_location| to the source location of the complete
@@ -1262,7 +1278,7 @@ class PROTOBUF_EXPORT MethodDescriptor {
   friend class compiler::cpp::Formatter;
 
   // See Descriptor::DebugString().
-  void DebugString(int depth, std::string *contents,
+  void DebugString(int depth, std::string* contents,
                    const DebugStringOptions& options) const;
 
   // Walks up the descriptor tree to generate the source location path
@@ -1294,6 +1310,8 @@ class PROTOBUF_EXPORT MethodDescriptor {
 // descriptor->file().  Use DescriptorPool to construct your own descriptors.
 class PROTOBUF_EXPORT FileDescriptor {
  public:
+  typedef FileDescriptorProto Proto;
+
   // The filename, relative to the source tree.
   // e.g. "foo/bar/baz.proto"
   const std::string& name() const;
@@ -1382,10 +1400,12 @@ class PROTOBUF_EXPORT FileDescriptor {
   const FieldDescriptor* FindExtensionByName(const std::string& name) const;
   // Similar to FindExtensionByName(), but searches by lowercased-name.  See
   // Descriptor::FindFieldByLowercaseName().
-  const FieldDescriptor* FindExtensionByLowercaseName(const std::string& name) const;
+  const FieldDescriptor* FindExtensionByLowercaseName(
+      const std::string& name) const;
   // Similar to FindExtensionByName(), but searches by camelcased-name.  See
   // Descriptor::FindFieldByCamelcaseName().
-  const FieldDescriptor* FindExtensionByCamelcaseName(const std::string& name) const;
+  const FieldDescriptor* FindExtensionByCamelcaseName(
+      const std::string& name) const;
 
   // See Descriptor::CopyTo().
   // Notes:
@@ -1613,22 +1633,24 @@ class PROTOBUF_EXPORT DescriptorPool {
     // Reports an error in the FileDescriptorProto. Use this function if the
     // problem occurred should interrupt building the FileDescriptorProto.
     virtual void AddError(
-      const std::string& filename,      // File name in which the error occurred.
-      const std::string& element_name,  // Full name of the erroneous element.
-      const Message* descriptor,   // Descriptor of the erroneous element.
-      ErrorLocation location,      // One of the location constants, above.
-      const std::string& message        // Human-readable error message.
-      ) = 0;
+        const std::string& filename,  // File name in which the error occurred.
+        const std::string& element_name,  // Full name of the erroneous element.
+        const Message* descriptor,  // Descriptor of the erroneous element.
+        ErrorLocation location,     // One of the location constants, above.
+        const std::string& message  // Human-readable error message.
+        ) = 0;
 
     // Reports a warning in the FileDescriptorProto. Use this function if the
     // problem occurred should NOT interrupt building the FileDescriptorProto.
     virtual void AddWarning(
-      const std::string& /*filename*/,      // File name in which the error occurred.
-      const std::string& /*element_name*/,  // Full name of the erroneous element.
-      const Message* /*descriptor*/,   // Descriptor of the erroneous element.
-      ErrorLocation /*location*/,      // One of the location constants, above.
-      const std::string& /*message*/        // Human-readable error message.
-      ) {}
+        const std::string& /*filename*/,      // File name in which the error
+                                              // occurred.
+        const std::string& /*element_name*/,  // Full name of the erroneous
+                                              // element.
+        const Message* /*descriptor*/,  // Descriptor of the erroneous element.
+        ErrorLocation /*location*/,     // One of the location constants, above.
+        const std::string& /*message*/  // Human-readable error message.
+    ) {}
 
    private:
     GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(ErrorCollector);
@@ -1742,7 +1764,6 @@ class PROTOBUF_EXPORT DescriptorPool {
   // lazy descriptor initialization behavior.
   bool InternalIsFileLoaded(const std::string& filename) const;
 
-
   // Add a file to unused_import_track_files_. DescriptorBuilder will log
   // warnings for those files if there is any unused import.
   void AddUnusedImportTrackFile(const std::string& file_name);
@@ -1785,11 +1806,13 @@ class PROTOBUF_EXPORT DescriptorPool {
   // symbol is defined if necessary. Will create a placeholder if the type
   // doesn't exist in the fallback database, or the file doesn't build
   // successfully.
-  Symbol CrossLinkOnDemandHelper(const std::string& name, bool expecting_enum) const;
+  Symbol CrossLinkOnDemandHelper(const std::string& name,
+                                 bool expecting_enum) const;
 
   // Create a placeholder FileDescriptor of the specified name
   FileDescriptor* NewPlaceholderFile(const std::string& name) const;
-  FileDescriptor* NewPlaceholderFileWithMutexHeld(const std::string& name) const;
+  FileDescriptor* NewPlaceholderFileWithMutexHeld(
+      const std::string& name) const;
 
   enum PlaceholderType {
     PLACEHOLDER_MESSAGE,
